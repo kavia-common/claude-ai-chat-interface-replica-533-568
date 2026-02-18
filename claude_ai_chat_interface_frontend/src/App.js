@@ -16,7 +16,8 @@ import {
   Settings,
   HelpCircle,
   User,
-  Bot
+  Bot,
+  LogOut
 } from 'lucide-react';
 import {
   getAllChats,
@@ -29,7 +30,142 @@ import {
 
 // PUBLIC_INTERFACE
 /**
- * Main App component - Claude.ai chat interface replica
+ * AccountMenu component - Account button with dropdown menu
+ * Implements click behavior and styling per design specifications
+ */
+const AccountMenu = ({ user }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  // Click outside handler
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target) &&
+        buttonRef.current && 
+        !buttonRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Keyboard handler
+  const handleKeyDown = (event) => {
+    if (!isOpen) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+    
+    if (event.key === 'Escape') {
+      setIsOpen(false);
+      buttonRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className="relative">
+      {/* Account Button */}
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all duration-150 ${
+          isOpen 
+            ? 'bg-dark-active border-border-focus' 
+            : 'border-transparent hover:bg-dark-hover hover:border-[#3a3a3a] active:scale-[0.98]'
+        }`}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        aria-label="Account menu"
+      >
+        {/* Avatar */}
+        <div className="w-9 h-9 min-w-[36px] rounded-full bg-accent-primary border-2 border-dark-elevated flex items-center justify-center text-white font-semibold text-sm uppercase">
+          {user.initials}
+        </div>
+        
+        {/* User Info */}
+        <div className="flex-1 text-left min-w-0">
+          <div className="text-sm font-medium text-text-primary truncate leading-[18px]">
+            {user.name}
+          </div>
+        </div>
+        
+        {/* Dropdown Icon */}
+        <ChevronDown 
+          className={`w-4 h-4 min-w-[16px] text-text-secondary transition-all duration-200 ${
+            isOpen ? 'rotate-180 text-text-primary' : ''
+          }`} 
+        />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div
+          ref={dropdownRef}
+          className="absolute bottom-full left-0 mb-2 w-full bg-dark-elevated border border-border-focus rounded-[10px] shadow-dropdown p-1.5 z-[1000] animate-fade-in-up"
+          role="menu"
+          aria-orientation="vertical"
+        >
+          {/* Menu Items */}
+          <MenuItem icon={<User size={18} />} onClick={() => setIsOpen(false)}>
+            Profile
+          </MenuItem>
+          <MenuItem icon={<Settings size={18} />} onClick={() => setIsOpen(false)}>
+            Settings
+          </MenuItem>
+          <MenuItem icon={<HelpCircle size={18} />} onClick={() => setIsOpen(false)}>
+            Help & Support
+          </MenuItem>
+          
+          <hr className="h-px bg-border-primary my-1.5 border-none" />
+          
+          <MenuItem icon={<LogOut size={18} />} onClick={() => setIsOpen(false)} destructive>
+            Sign Out
+          </MenuItem>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// PUBLIC_INTERFACE
+/**
+ * MenuItem component - Individual menu item with icon and hover states
+ */
+const MenuItem = ({ icon, children, onClick, destructive = false }) => {
+  return (
+    <button
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-normal transition-colors duration-100 ${
+        destructive 
+          ? 'text-[#ef4444] hover:bg-[#ef4444]/10' 
+          : 'text-text-primary hover:bg-[#353535]'
+      }`}
+      onClick={onClick}
+      role="menuitem"
+      tabIndex={0}
+    >
+      <span className={`min-w-[18px] ${destructive ? 'text-[#ef4444]' : 'text-text-secondary'}`}>
+        {icon}
+      </span>
+      {children}
+    </button>
+  );
+};
+
+// PUBLIC_INTERFACE
+/**
+ * Main App component - Claude.ai chat interface replica with dark theme
  * Implements a pixel-perfect clone with sidebar, chat area, and message handling
  * Integrated with Express backend for real chat functionality and SSE streaming
  */
@@ -358,28 +494,28 @@ function App() {
 
   if (loading && chats.length === 0) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white">
+      <div className="flex h-screen items-center justify-center bg-dark-primary">
         <div className="text-center">
-          <Bot size={48} className="text-claude-primary mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <Bot size={48} className="text-accent-primary mx-auto mb-4" />
+          <p className="text-text-secondary">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-white text-gray-900">
+    <div className="flex h-screen bg-dark-primary text-text-primary">
       {/* Sidebar */}
       <div
         className={`${
           isSidebarOpen ? 'w-64' : 'w-0'
-        } bg-gray-50 border-r border-gray-200 flex flex-col transition-all duration-300 overflow-hidden`}
+        } bg-dark-secondary border-r border-border-primary flex flex-col transition-all duration-300 overflow-hidden`}
       >
         {/* Sidebar Header */}
-        <div className="p-3 border-b border-gray-200">
+        <div className="p-3 border-b border-border-primary">
           <button
             onClick={handleNewChat}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-transparent border border-border-focus rounded-lg hover:bg-dark-hover transition text-sm font-medium"
           >
             <Plus size={18} />
             New chat
@@ -387,15 +523,15 @@ function App() {
         </div>
 
         {/* Search */}
-        <div className="p-3 border-b border-gray-200">
+        <div className="p-3 border-b border-border-primary">
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" />
             <input
               type="text"
               placeholder="Search chats..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-claude-success"
+              className="w-full pl-9 pr-3 py-2 bg-dark-primary border border-border-primary rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border-focus focus:border-transparent"
             />
           </div>
         </div>
@@ -409,18 +545,18 @@ function App() {
                   <button
                     key={chat.id}
                     onClick={() => handleSelectChat(chat.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm ${
-                      currentChatId === chat.id ? 'bg-gray-200' : ''
+                    className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-dark-hover transition text-sm ${
+                      currentChatId === chat.id ? 'bg-dark-hover' : ''
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <MessageSquare size={16} className="text-gray-500 flex-shrink-0" />
+                      <MessageSquare size={16} className="text-text-secondary flex-shrink-0" />
                       <span className="truncate">{chat.title}</span>
                     </div>
                   </button>
                 ))
               ) : (
-                <p className="text-center text-sm text-gray-500 py-4">No chats found</p>
+                <p className="text-center text-sm text-text-secondary py-4">No chats found</p>
               )}
             </div>
           ) : (
@@ -429,19 +565,19 @@ function App() {
                 ([groupName, groupChats]) =>
                   groupChats.length > 0 && (
                     <div key={groupName} className="mb-4">
-                      <div className="text-xs font-semibold text-gray-500 px-3 py-2">
+                      <div className="text-xs font-semibold text-text-secondary px-3 py-2">
                         {groupName}
                       </div>
                       {groupChats.map((chat) => (
                         <button
                           key={chat.id}
                           onClick={() => handleSelectChat(chat.id)}
-                          className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm ${
-                            currentChatId === chat.id ? 'bg-gray-200' : ''
+                          className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-dark-hover transition text-sm ${
+                            currentChatId === chat.id ? 'bg-dark-hover' : ''
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <MessageSquare size={16} className="text-gray-500 flex-shrink-0" />
+                            <MessageSquare size={16} className="text-text-secondary flex-shrink-0" />
                             <span className="truncate">{chat.title}</span>
                           </div>
                         </button>
@@ -453,36 +589,25 @@ function App() {
           )}
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="p-3 border-t border-gray-200">
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm">
-            <User size={18} className="text-gray-600" />
-            <span className="flex-1 text-left">Account</span>
-          </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm">
-            <Settings size={18} className="text-gray-600" />
-            <span className="flex-1 text-left">Settings</span>
-          </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm">
-            <HelpCircle size={18} className="text-gray-600" />
-            <span className="flex-1 text-left">Help</span>
-          </button>
+        {/* Sidebar Footer - Account Menu */}
+        <div className="p-3 border-t border-border-primary">
+          <AccountMenu user={{ name: 'Account', initials: 'AC' }} />
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Top Bar */}
-        <div className="h-14 border-b border-gray-200 flex items-center px-4 gap-3 bg-white">
+        <div className="h-14 border-b border-border-primary flex items-center px-4 gap-3 bg-dark-primary">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            className="p-2 hover:bg-dark-hover rounded-lg transition"
           >
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
           {/* Model Selector */}
-          <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded-lg transition">
+          <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-dark-hover rounded-lg transition">
             <span className="text-sm font-medium">{selectedModel}</span>
             <ChevronDown size={16} />
           </button>
@@ -500,13 +625,13 @@ function App() {
           {messages.length === 0 ? (
             // Empty State
             <div className="h-full flex flex-col items-center justify-center px-4 max-w-2xl mx-auto text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-claude-primary/10 to-gray-50 rounded-2xl flex items-center justify-center mb-6">
-                <Bot size={32} className="text-claude-primary" />
+              <div className="w-16 h-16 bg-gradient-to-br from-accent-primary/10 to-dark-hover rounded-2xl flex items-center justify-center mb-6">
+                <Bot size={32} className="text-accent-primary" />
               </div>
-              <h2 className="text-2xl font-semibold mb-2 text-gray-800">
+              <h2 className="text-2xl font-semibold mb-2 text-text-primary">
                 How can I help you today?
               </h2>
-              <p className="text-gray-600 mb-8">
+              <p className="text-text-secondary mb-8">
                 I'm Claude, an AI assistant. I can help with writing, analysis, math, coding, and much more.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-xl">
@@ -519,7 +644,7 @@ function App() {
                   <button
                     key={i}
                     onClick={() => setInputValue(prompt)}
-                    className="px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-left text-sm transition"
+                    className="px-4 py-3 bg-dark-elevated hover:bg-dark-hover border border-border-primary rounded-xl text-left text-sm transition"
                   >
                     {prompt}
                   </button>
@@ -535,7 +660,7 @@ function App() {
                     {/* Avatar */}
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                       message.role === 'user' 
-                        ? 'bg-claude-primary text-white' 
+                        ? 'bg-accent-primary text-white' 
                         : 'bg-claude-success text-white'
                     }`}>
                       {message.role === 'user' ? <User size={18} /> : <Bot size={18} />}
@@ -547,7 +672,7 @@ function App() {
                         <span className="font-semibold text-sm">
                           {message.role === 'user' ? 'You' : 'Claude'}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-text-muted">
                           {new Date(message.timestamp).toLocaleTimeString([], { 
                             hour: '2-digit', 
                             minute: '2-digit' 
@@ -556,11 +681,11 @@ function App() {
                       </div>
 
                       {message.isThinking ? (
-                        <div className="flex items-center gap-2 text-gray-600">
+                        <div className="flex items-center gap-2 text-text-secondary">
                           <div className="flex gap-1">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                            <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                           </div>
                           <span className="text-sm">Thinking...</span>
                         </div>
@@ -581,20 +706,20 @@ function App() {
                           {message.role === 'assistant' && (
                             <div className="flex items-center gap-2 mt-4">
                               <button 
-                                className="p-1.5 hover:bg-gray-100 rounded transition" 
+                                className="p-1.5 hover:bg-dark-hover rounded transition" 
                                 title="Copy"
                                 onClick={() => handleCopyMessage(message.content)}
                               >
-                                <Copy size={16} className="text-gray-600" />
+                                <Copy size={16} className="text-text-secondary" />
                               </button>
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Good response">
-                                <ThumbsUp size={16} className="text-gray-600" />
+                              <button className="p-1.5 hover:bg-dark-hover rounded transition" title="Good response">
+                                <ThumbsUp size={16} className="text-text-secondary" />
                               </button>
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Bad response">
-                                <ThumbsDown size={16} className="text-gray-600" />
+                              <button className="p-1.5 hover:bg-dark-hover rounded transition" title="Bad response">
+                                <ThumbsDown size={16} className="text-text-secondary" />
                               </button>
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Regenerate">
-                                <RotateCcw size={16} className="text-gray-600" />
+                              <button className="p-1.5 hover:bg-dark-hover rounded transition" title="Regenerate">
+                                <RotateCcw size={16} className="text-text-secondary" />
                               </button>
                             </div>
                           )}
@@ -610,9 +735,9 @@ function App() {
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-gray-200 bg-white">
+        <div className="border-t border-border-primary bg-dark-primary">
           <div className="max-w-3xl mx-auto px-4 py-4">
-            <div className="relative bg-white border border-gray-300 rounded-2xl shadow-sm focus-within:border-claude-success focus-within:ring-2 focus-within:ring-claude-success/20 transition">
+            <div className="relative bg-dark-secondary border border-border-primary rounded-2xl shadow-sm focus-within:border-border-focus focus-within:ring-2 focus-within:ring-border-focus/20 transition">
               <textarea
                 ref={textareaRef}
                 value={inputValue}
@@ -624,7 +749,7 @@ function App() {
                   }
                 }}
                 placeholder="Message Claude..."
-                className="w-full px-4 py-3 pr-12 resize-none focus:outline-none rounded-2xl"
+                className="w-full px-4 py-3 pr-12 resize-none focus:outline-none rounded-2xl bg-transparent text-text-primary placeholder:text-text-tertiary"
                 rows={1}
                 style={{ maxHeight: '200px' }}
                 disabled={!currentChatId}
@@ -634,14 +759,14 @@ function App() {
                 disabled={!inputValue.trim() || isStreaming || !currentChatId}
                 className={`absolute right-2 bottom-2 p-2 rounded-lg transition ${
                   inputValue.trim() && !isStreaming && currentChatId
-                    ? 'bg-claude-success text-white hover:bg-claude-success/90'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    ? 'bg-accent-primary text-white hover:bg-accent-hover'
+                    : 'bg-dark-hover text-text-tertiary cursor-not-allowed'
                 }`}
               >
                 <Send size={18} />
               </button>
             </div>
-            <div className="text-xs text-gray-500 text-center mt-3">
+            <div className="text-xs text-text-secondary text-center mt-3">
               Claude can make mistakes. Please double-check responses.
             </div>
           </div>

@@ -13,9 +13,21 @@
   }
 }
 
+/* Fade in up animation for dropdown */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Prose styles for markdown content */
 .prose {
-  color: #374151;
+  color: #e8e8e8;
   line-height: 1.75;
 }
 
@@ -26,7 +38,7 @@
 
 .prose strong {
   font-weight: 600;
-  color: #111827;
+  color: #ffffff;
 }
 
 .prose ol,
@@ -45,7 +57,7 @@
   font-weight: 600;
   margin-top: 1.5em;
   margin-bottom: 0.5em;
-  color: #111827;
+  color: #ffffff;
 }
 
 .prose h1 {
@@ -61,14 +73,14 @@
 }
 
 .prose a {
-  color: #059669;
+  color: #8b9dc3;
   text-decoration: underline;
 }
 
 .prose blockquote {
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid #363636;
   padding-left: 1em;
   font-style: italic;
-  color: #6b7280;
+  color: #a8a8a8;
   margin: 1em 0;
 }
