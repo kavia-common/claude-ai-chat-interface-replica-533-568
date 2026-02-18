@@ -18,11 +18,20 @@ import {
   User,
   Bot
 } from 'lucide-react';
+import {
+  getAllChats,
+  createChat,
+  getMessages,
+  sendMessageStream,
+  deleteChat,
+  updateChat,
+} from './services/api';
 
 // PUBLIC_INTERFACE
 /**
  * Main App component - Claude.ai chat interface replica
  * Implements a pixel-perfect clone with sidebar, chat area, and message handling
+ * Integrated with Express backend for real chat functionality and SSE streaming
  */
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -30,12 +39,26 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
-  const [chats, setChats] = useState([
-    { id: 1, title: 'New conversation', timestamp: 'Today', messages: [] },
-  ]);
-  const [currentChatId, setCurrentChatId] = useState(1);
+  const [chats, setChats] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const streamControllerRef = useRef(null);
+
+  // Load chats on mount
+  useEffect(() => {
+    loadChats();
+  }, []);
+
+  // Load messages when chat changes
+  useEffect(() => {
+    if (currentChatId) {
+      loadMessages(currentChatId);
+    }
+  }, [currentChatId]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -52,54 +75,148 @@ function App() {
 
   // PUBLIC_INTERFACE
   /**
-   * Handles sending a new message
-   * Simulates streaming assistant response
+   * Loads all chats from the backend
+   */
+  const loadChats = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const fetchedChats = await getAllChats();
+      setChats(fetchedChats);
+      
+      // If no current chat, select the first one or create new
+      if (!currentChatId && fetchedChats.length > 0) {
+        setCurrentChatId(fetchedChats[0].id);
+      } else if (fetchedChats.length === 0) {
+        // Create initial chat if none exist
+        await handleNewChat();
+      }
+    } catch (err) {
+      setError('Failed to load chats: ' + err.message);
+      console.error('Error loading chats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // PUBLIC_INTERFACE
+  /**
+   * Loads messages for a specific chat
+   */
+  const loadMessages = async (chatId) => {
+    try {
+      const fetchedMessages = await getMessages(chatId);
+      setMessages(fetchedMessages);
+    } catch (err) {
+      setError('Failed to load messages: ' + err.message);
+      console.error('Error loading messages:', err);
+    }
+  };
+
+  // PUBLIC_INTERFACE
+  /**
+   * Handles sending a new message with SSE streaming
    */
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isStreaming) return;
+    if (!inputValue.trim() || isStreaming || !currentChatId) return;
 
-    const userMessage = {
-      id: Date.now(),
-      role: 'user',
-      content: inputValue,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const messageContent = inputValue;
     setInputValue('');
     setIsStreaming(true);
+    setError(null);
 
-    // Simulate thinking
-    const thinkingMessage = {
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: '',
-      isThinking: true,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, thinkingMessage]);
+    // Create temporary assistant message for streaming
+    const tempAssistantId = `temp-${Date.now()}`;
 
-    // Simulate streaming response
-    setTimeout(() => {
-      const responses = [
-        "I'm Claude, an AI assistant created by Anthropic. I'm here to help you with a wide range of tasks, from answering questions to helping with analysis, writing, math, coding, and much more.\n\nI aim to be helpful, harmless, and honest in my interactions. How can I assist you today?",
-        "That's a great question! Let me break this down for you:\n\n1. **First point**: This is an important consideration\n2. **Second point**: Here's another key aspect\n3. **Third point**: Finally, this completes the picture\n\nWould you like me to elaborate on any of these points?",
-        "Here's a simple example:\n\n```javascript\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet('World'));\n```\n\nThis code demonstrates a basic function in JavaScript that takes a name parameter and returns a greeting string."
-      ];
+    try {
+      streamControllerRef.current = sendMessageStream(
+        currentChatId,
+        messageContent,
+        {
+          onUserMessage: (userMsg) => {
+            // Add confirmed user message
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: userMsg.id,
+                role: 'user',
+                content: userMsg.content,
+                timestamp: userMsg.timestamp,
+              },
+            ]);
+          },
+          onThinking: () => {
+            // Add thinking indicator
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: tempAssistantId,
+                role: 'assistant',
+                content: '',
+                isThinking: true,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          },
+          onContent: (chunk) => {
+            // Update assistant message with streaming content
+            setMessages((prev) => {
+              const filtered = prev.filter(
+                (msg) => msg.id !== tempAssistantId || !msg.isThinking
+              );
+              const existing = filtered.find((msg) => msg.id === tempAssistantId);
 
-      const response = responses[Math.floor(Math.random() * responses.length)];
-      
-      setMessages(prev => {
-        const filtered = prev.filter(msg => !msg.isThinking);
-        return [...filtered, {
-          id: Date.now() + 2,
-          role: 'assistant',
-          content: response,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }];
-      });
+              if (existing) {
+                return filtered.map((msg) =>
+                  msg.id === tempAssistantId
+                    ? { ...msg, content: msg.content + chunk.content }
+                    : msg
+                );
+              } else {
+                return [
+                  ...filtered,
+                  {
+                    id: tempAssistantId,
+                    role: 'assistant',
+                    content: chunk.content,
+                    timestamp: new Date().toISOString(),
+                  },
+                ];
+              }
+            });
+          },
+          onComplete: (completeMsg) => {
+            // Replace temporary message with final one
+            setMessages((prev) => {
+              const filtered = prev.filter((msg) => msg.id !== tempAssistantId);
+              return [
+                ...filtered,
+                {
+                  id: completeMsg.id,
+                  role: 'assistant',
+                  content: completeMsg.content,
+                  timestamp: completeMsg.timestamp,
+                },
+              ];
+            });
+            setIsStreaming(false);
+            
+            // Update chat list to reflect new message
+            loadChats();
+          },
+          onError: (errorData) => {
+            setError('Failed to send message: ' + errorData.message);
+            setMessages((prev) => prev.filter((msg) => msg.id !== tempAssistantId));
+            setIsStreaming(false);
+          },
+        }
+      );
+    } catch (err) {
+      setError('Failed to send message: ' + err.message);
+      console.error('Error sending message:', err);
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempAssistantId));
       setIsStreaming(false);
-    }, 2000);
+    }
   };
 
   // PUBLIC_INTERFACE
@@ -112,19 +229,102 @@ function App() {
 
   // PUBLIC_INTERFACE
   /**
+   * Handles copying message content to clipboard
+   */
+  const handleCopyMessage = (content) => {
+    navigator.clipboard.writeText(content);
+  };
+
+  // PUBLIC_INTERFACE
+  /**
    * Starts a new chat conversation
    */
-  const handleNewChat = () => {
-    const newChat = {
-      id: Date.now(),
-      title: 'New conversation',
-      timestamp: 'Today',
-      messages: []
-    };
-    setChats(prev => [newChat, ...prev]);
-    setCurrentChatId(newChat.id);
-    setMessages([]);
+  const handleNewChat = async () => {
+    try {
+      const newChat = await createChat('New conversation');
+      setChats((prev) => [newChat, ...prev]);
+      setCurrentChatId(newChat.id);
+      setMessages([]);
+    } catch (err) {
+      setError('Failed to create new chat: ' + err.message);
+      console.error('Error creating chat:', err);
+    }
   };
+
+  // PUBLIC_INTERFACE
+  /**
+   * Switches to a different chat
+   */
+  const handleSelectChat = (chatId) => {
+    setCurrentChatId(chatId);
+  };
+
+  // PUBLIC_INTERFACE
+  /**
+   * Deletes a chat
+   */
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteChat(chatId);
+      setChats((prev) => prev.filter((chat) => chat.id !== chatId));
+      
+      // If deleted current chat, switch to another
+      if (chatId === currentChatId) {
+        const remainingChats = chats.filter((chat) => chat.id !== chatId);
+        if (remainingChats.length > 0) {
+          setCurrentChatId(remainingChats[0].id);
+        } else {
+          await handleNewChat();
+        }
+      }
+    } catch (err) {
+      setError('Failed to delete chat: ' + err.message);
+      console.error('Error deleting chat:', err);
+    }
+  };
+
+  // Group chats by date
+  const groupChatsByDate = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const lastWeek = new Date(today);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+
+    const groups = {
+      Today: [],
+      Yesterday: [],
+      'Previous 7 Days': [],
+      Older: [],
+    };
+
+    chats.forEach((chat) => {
+      const chatDate = new Date(chat.createdAt);
+      const chatDay = new Date(chatDate.getFullYear(), chatDate.getMonth(), chatDate.getDate());
+
+      if (chatDay.getTime() === today.getTime()) {
+        groups.Today.push(chat);
+      } else if (chatDay.getTime() === yesterday.getTime()) {
+        groups.Yesterday.push(chat);
+      } else if (chatDay >= lastWeek) {
+        groups['Previous 7 Days'].push(chat);
+      } else {
+        groups.Older.push(chat);
+      }
+    });
+
+    return groups;
+  };
+
+  // Filter chats by search query
+  const filteredChats = searchQuery
+    ? chats.filter((chat) =>
+        chat.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : chats;
+
+  const chatGroups = groupChatsByDate();
 
   // Custom code block renderer
   const CodeBlock = ({ node, inline, className, children, ...props }) => {
@@ -156,6 +356,17 @@ function App() {
     );
   };
 
+  if (loading && chats.length === 0) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="text-center">
+          <Bot size={48} className="text-claude-primary mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-white text-gray-900">
       {/* Sidebar */}
@@ -182,6 +393,8 @@ function App() {
             <input
               type="text"
               placeholder="Search chats..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-claude-success"
             />
           </div>
@@ -189,26 +402,55 @@ function App() {
 
         {/* Chat History */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-2">
-            <div className="text-xs font-semibold text-gray-500 px-3 py-2">Today</div>
-            {chats.filter(chat => chat.timestamp === 'Today').map(chat => (
-              <button
-                key={chat.id}
-                onClick={() => {
-                  setCurrentChatId(chat.id);
-                  setMessages(chat.messages);
-                }}
-                className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm ${
-                  currentChatId === chat.id ? 'bg-gray-200' : ''
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <MessageSquare size={16} className="text-gray-500 flex-shrink-0" />
-                  <span className="truncate">{chat.title}</span>
-                </div>
-              </button>
-            ))}
-          </div>
+          {searchQuery ? (
+            <div className="p-2">
+              {filteredChats.length > 0 ? (
+                filteredChats.map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => handleSelectChat(chat.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm ${
+                      currentChatId === chat.id ? 'bg-gray-200' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <MessageSquare size={16} className="text-gray-500 flex-shrink-0" />
+                      <span className="truncate">{chat.title}</span>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-sm text-gray-500 py-4">No chats found</p>
+              )}
+            </div>
+          ) : (
+            <div className="p-2">
+              {Object.entries(chatGroups).map(
+                ([groupName, groupChats]) =>
+                  groupChats.length > 0 && (
+                    <div key={groupName} className="mb-4">
+                      <div className="text-xs font-semibold text-gray-500 px-3 py-2">
+                        {groupName}
+                      </div>
+                      {groupChats.map((chat) => (
+                        <button
+                          key={chat.id}
+                          onClick={() => handleSelectChat(chat.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-200 transition text-sm ${
+                            currentChatId === chat.id ? 'bg-gray-200' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <MessageSquare size={16} className="text-gray-500 flex-shrink-0" />
+                            <span className="truncate">{chat.title}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sidebar Footer */}
@@ -244,6 +486,13 @@ function App() {
             <span className="text-sm font-medium">{selectedModel}</span>
             <ChevronDown size={16} />
           </button>
+
+          {/* Error Display */}
+          {error && (
+            <div className="ml-auto text-sm text-claude-error">
+              {error}
+            </div>
+          )}
         </div>
 
         {/* Chat Area */}
@@ -298,7 +547,12 @@ function App() {
                         <span className="font-semibold text-sm">
                           {message.role === 'user' ? 'You' : 'Claude'}
                         </span>
-                        <span className="text-xs text-gray-500">{message.timestamp}</span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(message.timestamp).toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </span>
                       </div>
 
                       {message.isThinking ? (
@@ -326,7 +580,11 @@ function App() {
                           {/* Message Actions */}
                           {message.role === 'assistant' && (
                             <div className="flex items-center gap-2 mt-4">
-                              <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Copy">
+                              <button 
+                                className="p-1.5 hover:bg-gray-100 rounded transition" 
+                                title="Copy"
+                                onClick={() => handleCopyMessage(message.content)}
+                              >
                                 <Copy size={16} className="text-gray-600" />
                               </button>
                               <button className="p-1.5 hover:bg-gray-100 rounded transition" title="Good response">
@@ -369,12 +627,13 @@ function App() {
                 className="w-full px-4 py-3 pr-12 resize-none focus:outline-none rounded-2xl"
                 rows={1}
                 style={{ maxHeight: '200px' }}
+                disabled={!currentChatId}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isStreaming}
+                disabled={!inputValue.trim() || isStreaming || !currentChatId}
                 className={`absolute right-2 bottom-2 p-2 rounded-lg transition ${
-                  inputValue.trim() && !isStreaming
+                  inputValue.trim() && !isStreaming && currentChatId
                     ? 'bg-claude-success text-white hover:bg-claude-success/90'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
