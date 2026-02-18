@@ -113,7 +113,7 @@ const AccountMenu = ({ user }) => {
       {isOpen && (
         <div
           ref={dropdownRef}
-          className="absolute bottom-full left-0 mb-2 w-full bg-dark-elevated border border-border-focus rounded-[10px] shadow-dropdown p-1.5 z-[1000] animate-fade-in-up"
+          className="absolute bottom-full left-0 mb-2 w-full bg-dark-elevated border border-[#404040] rounded-[10px] shadow-dropdown p-1.5 z-[1000] animate-fade-in-up"
           role="menu"
           aria-orientation="vertical"
         >
